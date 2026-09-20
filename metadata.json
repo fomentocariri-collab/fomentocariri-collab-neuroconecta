@@ -1,0 +1,6 @@
+{
+  "name": "NeuroConecta",
+  "description": "Plataforma integrada de tecnologia assistiva, acessibilidade, comunicação e apoio à autonomia.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
