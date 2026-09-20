@@ -209,15 +209,13 @@ export const SupabaseHub: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2">
-          {isSuperAdmin && (
-            <button
-              onClick={() => setShowConfigForm(!showConfigForm)}
-              className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold rounded-xl text-xs flex items-center gap-1.5 transition border border-slate-700"
-            >
-              <Settings className="w-3.5 h-3.5 text-slate-400" />
-              Configurar Endpoint
-            </button>
-          )}
+          <button
+            onClick={() => setShowConfigForm(!showConfigForm)}
+            className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold rounded-xl text-xs flex items-center gap-1.5 transition border border-slate-700"
+          >
+            <Settings className="w-3.5 h-3.5 text-slate-400" />
+            Configurar Endpoint
+          </button>
           <button
             onClick={runHealthCheck}
             disabled={isChecking}

@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import { SYSTEM_SCRIPTS, convertFileToBase64 } from "../lib/systemScripts";
 import neuroconectaLogo, { neuroconectaBase64 } from "../assets/logo";
-import { supabase, SUPABASE_SQL_SCHEMA, checkSupabaseHealth } from "../lib/supabase";
+import { supabase, SUPABASE_SQL_SCHEMA, checkSupabaseHealth, getSupabaseConfig } from "../lib/supabase";
 
 export const ScriptsHub: React.FC = () => {
   const [activeTab, setActiveTab] = useState<"logo_script" | "sql_script" | "deploy_script" | "backup_script">("logo_script");
@@ -106,7 +106,7 @@ export default neuroconectaLogo;
     await new Promise((r) => setTimeout(r, 400));
 
     // Check 2: Environment Variables
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "https://gbjanxdyllxpsydsubcx.supabase.co";
+    const supabaseUrl = getSupabaseConfig().url;
     addLog(`✅ [3/5] Variáveis de Ambiente: VITE_SUPABASE_URL configurada (${supabaseUrl.substring(0, 24)}...).`);
     await new Promise((r) => setTimeout(r, 400));
 

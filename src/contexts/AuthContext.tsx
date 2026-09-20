@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
 import { User, Session } from "@supabase/supabase-js";
-import { supabase } from "../lib/supabase";
+import { supabase, getSupabaseProjectRef } from "../lib/supabase";
 import { UserProfile, UserRole } from "../types";
 import { auditService } from "../services/auditService";
 import { dataSyncService } from "../services/dataSyncService";
@@ -16,7 +16,7 @@ export interface AuthContextType {
   isOfflineMode: boolean;
   signIn: (email: string, pass: string) => Promise<{ error?: string; user?: User; isOfflineFallback?: boolean }>;
   signUp: (email: string, pass: string, initialProfile: Partial<UserProfile>) => Promise<{ error?: string; user?: User; isOfflineFallback?: boolean }>;
-  signInWithGoogle: () => Promise<{ error?: string }>;
+  signInWithGoogle: () => Promise<{ error?: string; details?: string; providerDisabled?: boolean }>;
   signInLocal: (email: string, name?: string, role?: UserRole) => Promise<{ user: User }>;
   signOut: () => Promise<void>;
   updateProfile: (profile: Partial<UserProfile>) => Promise<{ error?: string }>;
@@ -560,7 +560,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const signInWithGoogle = async () => {
+  const signInWithGoogle = async (): Promise<{ error?: string; details?: string; providerDisabled?: boolean }> => {
     setIsLoading(true);
     try {
       const redirectOrigin = window.location.origin;
@@ -568,6 +568,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         provider: "google",
         options: {
           redirectTo: redirectOrigin,
+          skipBrowserRedirect: true,
           queryParams: {
             access_type: "offline",
             prompt: "select_account",
@@ -577,13 +578,54 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (error) {
         setIsLoading(false);
-        return { error: error.message };
+        const isNotEnabled = (error.message || "").toLowerCase().includes("not enabled");
+        return {
+          error: error.message,
+          providerDisabled: isNotEnabled,
+          details: isNotEnabled
+            ? "O provedor Google OAuth não está ativado no painel do Supabase. Ative-o em Authentication > Providers > Google."
+            : undefined,
+        };
       }
 
-      return {};
+      if (data?.url) {
+        // Pre-check if Google provider is enabled before redirecting to avoid a raw JSON error tab
+        try {
+          const checkRes = await fetch(data.url, { method: "GET" });
+          if (!checkRes.ok) {
+            const body = await checkRes.json().catch(() => ({}));
+            if (
+              body?.error_code === "validation_failed" ||
+              (body?.msg && body.msg.toLowerCase().includes("provider is not enabled"))
+            ) {
+              const activeRef = getSupabaseProjectRef();
+              setIsLoading(false);
+              return {
+                error: "O provedor Google OAuth não está habilitado no painel do Supabase.",
+                providerDisabled: true,
+                details:
+                  `No seu projeto Supabase (${activeRef}), o login com Google precisa ser ativado em Authentication > Providers > Google. Enquanto isso, você pode entrar ou se cadastrar com seu e-mail do Gmail e senha abaixo.`,
+              };
+            }
+          }
+        } catch (fetchErr) {
+          console.warn("Verificação prévia do Google OAuth:", fetchErr);
+        }
+
+        // If enabled, redirect user to Google
+        window.location.href = data.url;
+        return {};
+      }
+
+      setIsLoading(false);
+      return { error: "URL de autenticação com Google não foi gerada pelo Supabase." };
     } catch (err: any) {
       setIsLoading(false);
-      return { error: err?.message || "Falha ao iniciar autenticação com Google." };
+      const isNotEnabled = String(err?.message || "").toLowerCase().includes("not enabled");
+      return {
+        error: err?.message || "Falha ao iniciar autenticação com Google.",
+        providerDisabled: isNotEnabled,
+      };
     }
   };
 

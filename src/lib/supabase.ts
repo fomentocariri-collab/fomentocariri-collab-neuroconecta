@@ -7,6 +7,22 @@ export interface SupabaseConfig {
   isCustom: boolean;
 }
 
+export function getSupabaseProjectRef(targetUrl?: string): string {
+  const url = (targetUrl || getSupabaseConfig().url).trim();
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname; // e.g. gbjanxdyllxpsydsubcx.supabase.co
+    const parts = host.split(".");
+    if (parts.length >= 2) {
+      return parts[0];
+    }
+  } catch {
+    const match = url.match(/https?:\/\/([^.]+)\.supabase\./);
+    if (match && match[1]) return match[1];
+  }
+  return "projeto";
+}
+
 export function getSupabaseConfig(): SupabaseConfig {
   try {
     const custom = localStorage.getItem("neuroconecta_supabase_custom_config");
