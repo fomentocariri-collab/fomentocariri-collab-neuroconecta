@@ -15,12 +15,15 @@ import {
   GraduationCap,
   Sparkles,
   ExternalLink,
-  Compass
+  Compass,
+  HeartHandshake
 } from "lucide-react";
-import { UserProfile, SavedTestResult, RoutineTask, FunctionalSupportPlan, PeiDraftVersion } from "../types";
+import { UserProfile, SavedTestResult, RoutineTask, FunctionalSupportPlan, PeiDraftVersion, PsychologyTherapeuticProcess } from "../types";
 import { Lote1Api } from "../services/lote1Client";
 import { AcademicReviewModal } from "./AcademicReviewModal";
 import { generateFunctionalReportPdf } from "../utils/pdfGenerator";
+import { PsychologyAllianceReportModal } from "./planner/PsychologyAllianceReportModal";
+import { smartPlannerService } from "../services/smartPlannerService";
 
 export interface PatientRecord {
   id: string;
@@ -50,6 +53,10 @@ type PeriodFilter = "diario" | "semanal" | "mensal";
 export const ReportHub: React.FC<ReportHubProps> = ({ userProfile, onNavigateToTab, isDark = true }) => {
   const [period, setPeriod] = useState<PeriodFilter>("semanal");
   const [showAcademicModal, setShowAcademicModal] = useState(false);
+
+  // Modal e processo da Aliança Terapêutica de Psicologia
+  const [isPsyReportModalOpen, setIsPsyReportModalOpen] = useState(false);
+  const [psyProcessForReport, setPsyProcessForReport] = useState<PsychologyTherapeuticProcess | null>(null);
 
   // Patient database for reports (strictly provenance-based, no fake scores or defaulted support levels)
   const [patients, setPatients] = useState<PatientRecord[]>(() => {
@@ -811,6 +818,49 @@ export const ReportHub: React.FC<ReportHubProps> = ({ userProfile, onNavigateToT
         </div>
       </div>
 
+      {/* Entrada para Relatório Especializado: Psicologia / Aliança Terapêutica */}
+      <div className="no-print bg-indigo-950/40 border border-indigo-800/80 rounded-2xl p-5 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 bg-indigo-900/60 text-indigo-300 border border-indigo-700/80 rounded-xl shrink-0">
+            <HeartHandshake className="w-5 h-5 text-indigo-400" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-900/80 text-indigo-300 border border-indigo-700">
+                Psicologia • TCC
+              </span>
+              <span className="text-xs text-slate-400">
+                Pessoa selecionada: <strong className="text-indigo-200">{patientName}</strong>
+              </span>
+            </div>
+            <h3 className="text-sm font-bold text-slate-100 mt-0.5">
+              Relatório de Evolução da Aliança Terapêutica
+            </h3>
+            <p className="text-[11px] text-slate-400">
+              Acompanhamento longitudinal das 4 dimensões (Vínculo, Sentido, Metas e Tarefas), pautas de sessão e rupturas.
+            </p>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={async () => {
+            try {
+              const targetUserId = selectedPatient?.id || (selectedPatId === "__me__" ? userProfile.id : selectedPatId);
+              const proc = await smartPlannerService.getPsychologyProcess(targetUserId, userProfile.id);
+              setPsyProcessForReport(proc);
+              setIsPsyReportModalOpen(true);
+            } catch (e) {
+              console.warn("Falha ao abrir relatório de aliança:", e);
+            }
+          }}
+          className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-2 shadow-sm self-start sm:self-auto shrink-0"
+        >
+          <FileText className="w-4 h-4" />
+          <span>Acessar Relatório da Aliança (PDF)</span>
+        </button>
+      </div>
+
       {/* Modal: Cadastrar Novo Registro */}
       {showAddPatientModal && (
         <div className="no-print fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
@@ -1351,6 +1401,23 @@ export const ReportHub: React.FC<ReportHubProps> = ({ userProfile, onNavigateToT
         isOpen={showAcademicModal}
         onClose={() => setShowAcademicModal(false)}
       />
+
+      {/* Modal Especializado de Relatório da Aliança Terapêutica */}
+      {psyProcessForReport && (
+        <PsychologyAllianceReportModal
+          isOpen={isPsyReportModalOpen}
+          onClose={() => setIsPsyReportModalOpen(false)}
+          process={psyProcessForReport}
+          selectedUser={selectedPatient ? {
+            id: selectedPatient.id,
+            displayName: selectedPatient.name,
+            relationshipType: "paciente",
+          } : null}
+          professionalName={userProfile.preferredName || "Profissional Responsável"}
+          professionalRegister={userProfile.professionalRegisterNumber || "Registro Profissional"}
+          isDark={isDark}
+        />
+      )}
 
     </div>
   );

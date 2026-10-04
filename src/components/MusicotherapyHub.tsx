@@ -687,6 +687,7 @@ export const MusicotherapyHub: React.FC<MusicotherapyHubProps> = ({ isDark = fal
       {mainSection === "nova_sessao" && (
         <MusicTherapySessionFlow
           currentSessionNumber={nextSessionNumber}
+          defaultPatientName={currentCase.patient_name}
           onSaveSession={handleSaveSession}
           onCancel={() => setMainSection("historico")}
           isDark={isDark}
@@ -697,6 +698,7 @@ export const MusicotherapyHub: React.FC<MusicotherapyHubProps> = ({ isDark = fal
       {mainSection === "indicadores" && (
         <MusicTherapyIndicatorsView
           currentCase={currentCase}
+          sessions={sessions}
           isDark={isDark}
         />
       )}
@@ -705,6 +707,7 @@ export const MusicotherapyHub: React.FC<MusicotherapyHubProps> = ({ isDark = fal
       {mainSection === "relatorios" && (
         <MusicTherapyReportGenerator
           currentCase={currentCase}
+          sessions={sessions}
           isDark={isDark}
         />
       )}

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { LogIn, UserPlus, ShieldCheck, Lock, Mail, User, CheckCircle2, AlertCircle, Sparkles, Key, LogOut, X, Calendar, ExternalLink, Info, ArrowRight, HelpCircle, Database, Settings, RotateCcw, ChevronDown, ChevronUp, Check } from "lucide-react";
 import { UserProfile, UserRole, ProfessionalRoleType, getAgeCategory, calculateAge } from "../types";
 import { useCurrentUser } from "../contexts/AuthContext";
@@ -30,7 +30,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [confirmPassword, setConfirmPassword] = useState("");
   const [name, setName] = useState("");
   const [birthDate, setBirthDate] = useState("2000-01-01");
-  const [userRole, setUserRole] = useState<UserRole>("profissional");
+  const [userRole, setUserRole] = useState<UserRole>("profissional_apoio");
   const [professionalRoleType, setProfessionalRoleType] = useState<ProfessionalRoleType>("medico");
   const [professionalRegisterNumber, setProfessionalRegisterNumber] = useState("");
   const [diagnosisStatus, setDiagnosisStatus] = useState("nao_informado");
@@ -41,6 +41,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [googleProviderWarning, setGoogleProviderWarning] = useState<string | null>(null);
+  const [directAuthUrl, setDirectAuthUrl] = useState<string | null>(null);
 
   // Supabase Custom Project Switcher State
   const [showProjectSettings, setShowProjectSettings] = useState(false);
@@ -52,6 +53,18 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const currentProjectRef = getSupabaseProjectRef(supabaseConfig.url);
 
   const { signIn, signUp, signInWithGoogle } = useCurrentUser();
+
+  // Fecha o modal e conclui login automaticamente assim que a sessão é confirmada (seja por senha, popup OAuth ou PKCE)
+  useEffect(() => {
+    if (currentUser && !currentUser.isGuest) {
+      setGoogleLoading(false);
+      setSuccessMessage(`Conectado com sucesso como ${currentUser.preferredName || currentUser.email}!`);
+      const timer = setTimeout(() => {
+        onLoginSuccess(currentUser);
+      }, 400);
+      return () => clearTimeout(timer);
+    }
+  }, [currentUser, onLoginSuccess]);
 
   if (!isOpen) return null;
 
@@ -100,6 +113,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     setErrorMessage("");
     setSuccessMessage("");
     setGoogleProviderWarning(null);
+    setDirectAuthUrl(null);
     setGoogleLoading(true);
     try {
       const res = await signInWithGoogle();
@@ -109,11 +123,15 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           "O provedor Google OAuth não está habilitado no painel do Supabase deste projeto."
         );
         setGoogleLoading(false);
+      } else if (res?.popupBlocked) {
+        setErrorMessage(res.error || "A janela de autenticação foi bloqueada pelo navegador.");
+        setDirectAuthUrl(res.authUrl || null);
+        setGoogleLoading(false);
       } else if (res?.error) {
         setErrorMessage(res.error);
         setGoogleLoading(false);
       } else {
-        setSuccessMessage("Redirecionando com segurança para o Google Gmail...");
+        setSuccessMessage("Janela segura do Google aberta. Selecione sua conta...");
       }
     } catch (err: any) {
       setErrorMessage(err?.message || "Não foi possível conectar ao Google no momento.");
@@ -474,8 +492,28 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
                 />
               </svg>
-              <span>{googleLoading ? "Verificando provedor..." : "Entrar com Google Gmail"}</span>
+              <span>{googleLoading ? "Conectando com o Google..." : "Entrar com Google Gmail"}</span>
             </button>
+
+            {/* Link direto caso o popup tenha sido bloqueado pelo navegador */}
+            {directAuthUrl && (
+              <div className={`p-3.5 border rounded-2xl text-xs space-y-2 animate-fadeIn ${
+                isDark ? "bg-cyan-950/40 border-cyan-800 text-cyan-200" : "bg-cyan-50 border-cyan-200 text-cyan-900"
+              }`}>
+                <p className="font-semibold text-[11px] leading-snug">
+                  A janela pop-up foi retida pelo bloqueador de pop-ups do seu navegador. Clique abaixo para abrir a autenticação em nova aba:
+                </p>
+                <a
+                  href={directAuthUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full py-2.5 px-3 bg-teal-600 hover:bg-teal-500 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition shadow-sm"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>Abrir Tela de Login Google</span>
+                </a>
+              </div>
+            )}
 
             {/* Explanatory Warning if Google Provider is disabled in Supabase */}
             {googleProviderWarning && (

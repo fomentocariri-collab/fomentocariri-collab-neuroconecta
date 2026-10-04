@@ -337,10 +337,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
                       {/* Hidden Module Indicator for Admin */}
                       {isSuperAdmin && isHidden && (
-                        <EyeOff 
-                          className="w-3.5 h-3.5 text-rose-400 ml-auto flex-shrink-0" 
-                          title="Módulo invisível para usuários padrão" 
-                        />
+                        <span title="Módulo invisível para usuários padrão" className="ml-auto flex-shrink-0">
+                          <EyeOff className="w-3.5 h-3.5 text-rose-400" />
+                        </span>
                       )}
 
                       {/* Floating Tooltip for Desktop Collapsed State */}

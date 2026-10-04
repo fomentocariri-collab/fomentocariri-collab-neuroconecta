@@ -34,6 +34,166 @@ function getActorFromReq(req: express.Request) {
 }
 
 // ==========================================
+// SUPABASE AUTH & GOOGLE OAUTH CALLBACK
+// ==========================================
+
+// Diagnóstico rápido de conectividade e status do provedor Google no Supabase
+app.get("/api/auth/check-google-provider", async (req, res) => {
+  const targetUrl = (req.query.url as string) || process.env.VITE_SUPABASE_URL || "https://gbjanxdyllxpsydsubcx.supabase.co";
+  const cleanUrl = targetUrl.trim().replace(/\/+$/, "");
+
+  try {
+    const authEndpoint = `${cleanUrl}/auth/v1/authorize?provider=google`;
+    const checkRes = await fetch(authEndpoint, { 
+      method: "GET", 
+      redirect: "manual",
+      headers: { "Accept": "application/json, text/html" }
+    });
+
+    // Se o provedor estiver ativo, o Supabase responde com 302/303 redirecionando para accounts.google.com
+    if (checkRes.status === 302 || checkRes.status === 303 || checkRes.status === 307) {
+      const location = checkRes.headers.get("location") || "";
+      return res.json({
+        enabled: true,
+        status: checkRes.status,
+        redirectsToGoogle: location.includes("accounts.google.com"),
+        location: location.slice(0, 100),
+      });
+    }
+
+    // Se o provedor estiver desativado, o Supabase retorna status 400 com payload JSON
+    const body: any = await checkRes.json().catch(() => ({}));
+    const isUnsupported = body?.error_code === "validation_failed" || (body?.msg && body.msg.toLowerCase().includes("provider is not enabled"));
+
+    return res.json({
+      enabled: false,
+      status: checkRes.status,
+      providerDisabled: isUnsupported,
+      message: body?.msg || "Provedor Google não respondeu com redirecionamento de autorização.",
+      raw: body,
+    });
+  } catch (err: any) {
+    const msg = err?.message || String(err);
+    const isDnsError = msg.includes("ENOTFOUND") || msg.includes("getaddrinfo") || msg.includes("fetch failed");
+    return res.json({
+      enabled: false,
+      isDnsError,
+      message: isDnsError ? `Não foi possível resolver o endereço do projeto Supabase: ${cleanUrl}` : msg,
+    });
+  }
+});
+
+// Endpoint canônico para retorno de popup ou redirecionamento OAuth do Supabase
+app.get(["/auth/callback", "/auth/callback/"], (req, res) => {
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.send(`<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NeuroConecta — Autenticação Google</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #090d16;
+      color: #f1f5f9;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
+      padding: 1.25rem;
+      box-sizing: border-box;
+    }
+    .card {
+      background: #0f172a;
+      border: 1px solid #1e293b;
+      border-radius: 1.25rem;
+      padding: 2.25rem 2rem;
+      max-width: 440px;
+      width: 100%;
+      text-align: center;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6);
+    }
+    .spinner {
+      width: 44px;
+      height: 44px;
+      border: 3.5px solid rgba(20, 184, 166, 0.2);
+      border-top-color: #14b8a6;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 1.25rem;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    h2 { font-size: 1.15rem; font-weight: 800; margin: 0 0 0.5rem; color: #fff; letter-spacing: -0.01em; }
+    p { font-size: 0.875rem; color: #94a3b8; margin: 0; line-height: 1.5; }
+    .error-box { 
+      margin-top: 1rem; 
+      padding: 0.75rem 1rem; 
+      background: rgba(239, 68, 68, 0.1); 
+      border: 1px solid rgba(239, 68, 68, 0.3); 
+      border-radius: 0.75rem; 
+      color: #fca5a5; 
+      font-size: 0.8rem; 
+      text-align: left;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="spinner" id="spinner"></div>
+    <h2 id="title">Conectando ao NeuroConecta...</h2>
+    <p id="desc">Validando sua sessão do Google. Esta janela fechará automaticamente em instantes.</p>
+    <div id="error-box" class="error-box" style="display:none;"></div>
+  </div>
+  <script>
+    (function() {
+      var search = window.location.search;
+      var hash = window.location.hash;
+      var params = new URLSearchParams(search);
+      var errorMsg = params.get('error_description') || params.get('error');
+
+      if (errorMsg) {
+        var spinner = document.getElementById('spinner');
+        if (spinner) spinner.style.display = 'none';
+        document.getElementById('title').textContent = 'Aviso de Autenticação';
+        document.getElementById('desc').textContent = 'O provedor retornou uma mensagem durante a autenticação.';
+        var errBox = document.getElementById('error-box');
+        errBox.style.display = 'block';
+        errBox.textContent = decodeURIComponent(errorMsg);
+      }
+
+      var payload = {
+        type: 'SUPABASE_AUTH_CALLBACK',
+        search: search,
+        hash: hash,
+        error: errorMsg || null
+      };
+
+      // 1. Notifica a janela principal (opener) se existir
+      if (window.opener && !window.opener.closed) {
+        try {
+          window.opener.postMessage(payload, '*');
+          setTimeout(function() {
+            window.close();
+          }, 800);
+          return;
+        } catch (e) {
+          console.warn('Erro ao enviar postMessage para opener:', e);
+        }
+      }
+
+      // 2. Se não houver opener (janela inteira redirecionada), encaminha para a aplicação principal
+      setTimeout(function() {
+        window.location.href = '/' + search + hash;
+      }, 1000);
+    })();
+  </script>
+</body>
+</html>`);
+});
+
+// ==========================================
 // ENDPOINTS DO LOTE 1: ARQUITETURA DE APOIO
 // ==========================================
 

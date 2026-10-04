@@ -523,40 +523,60 @@ export const smartPlannerService = {
     patientUserId: string,
     professionalUserId: string
   ): Promise<PsychologyTherapeuticProcess> {
-    const { data, error } = await supabase
-      .from("psychology_processes")
-      .select("*")
-      .eq("patient_user_id", patientUserId)
-      .maybeSingle();
+    const storageKey = `neuroconecta_psychology_process_${patientUserId}`;
+    let localBackup: PsychologyTherapeuticProcess | null = null;
+    try {
+      const stored = localStorage.getItem(storageKey);
+      if (stored) {
+        localBackup = JSON.parse(stored);
+      }
+    } catch {}
 
-    if (error) {
-      console.error("[SmartPlannerService] Erro ao buscar psychology_processes:", error);
-      throw new Error(`Falha ao consultar processo psicológico no Supabase: ${error.message}`);
+    try {
+      const { data, error } = await supabase
+        .from("psychology_processes")
+        .select("*")
+        .eq("patient_user_id", patientUserId)
+        .maybeSingle();
+
+      if (error) {
+        console.warn("[SmartPlannerService] Aviso ao buscar psychology_processes no Supabase:", error.message);
+        if (localBackup) return localBackup;
+      }
+
+      if (data) {
+        const proc: PsychologyTherapeuticProcess = {
+          id: data.id,
+          professionalUserId: data.professional_user_id,
+          patientUserId: data.patient_user_id,
+          patientName: data.patient_name,
+          startDate: data.start_date,
+          therapeuticApproach: data.therapeutic_approach,
+          collaborativeGoals: data.collaborative_goals || [],
+          sessionAgendas: data.session_agendas || [],
+          interSessionActivities: data.inter_session_activities || [],
+          processCheckIns: data.process_check_ins || [],
+          ruptureAlerts: data.rupture_alerts || [],
+          status: data.status,
+          updatedAt: data.updated_at,
+        };
+        try {
+          localStorage.setItem(storageKey, JSON.stringify(proc));
+        } catch {}
+        return proc;
+      }
+    } catch (e: any) {
+      console.warn("[SmartPlannerService] Falha de rede ao consultar processo no Supabase, usando backup local:", e?.message);
+      if (localBackup) return localBackup;
     }
 
-    if (data) {
-      return {
-        id: data.id,
-        professionalUserId: data.professional_user_id,
-        patientUserId: data.patient_user_id,
-        patientName: data.patient_name,
-        startDate: data.start_date,
-        therapeuticApproach: data.therapeutic_approach,
-        collaborativeGoals: data.collaborative_goals || [],
-        sessionAgendas: data.session_agendas || [],
-        interSessionActivities: data.inter_session_activities || [],
-        processCheckIns: data.process_check_ins || [],
-        ruptureAlerts: data.rupture_alerts || [],
-        status: data.status,
-        updatedAt: data.updated_at,
-      };
-    }
+    if (localBackup) return localBackup;
 
     const patient = await this.getAssistedUserContext(patientUserId);
     const procId = crypto.randomUUID ? crypto.randomUUID() : `psy-proc-${Date.now()}`;
     const now = new Date().toISOString();
 
-    return {
+    const initialProc: PsychologyTherapeuticProcess = {
       id: procId,
       professionalUserId,
       patientUserId,
@@ -571,6 +591,12 @@ export const smartPlannerService = {
       status: "em_andamento",
       updatedAt: now,
     };
+
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(initialProc));
+    } catch {}
+
+    return initialProc;
   },
 
   async savePsychologyProcess(
@@ -582,39 +608,49 @@ export const smartPlannerService = {
       updatedAt: new Date().toISOString(),
     };
 
-    const { error } = await supabase.from("psychology_processes").upsert({
-      id: updated.id,
-      professional_user_id: updated.professionalUserId,
-      patient_user_id: updated.patientUserId,
-      patient_name: updated.patientName,
-      start_date: updated.startDate,
-      therapeutic_approach: updated.therapeuticApproach,
-      collaborative_goals: updated.collaborativeGoals,
-      session_agendas: updated.sessionAgendas,
-      inter_session_activities: updated.interSessionActivities,
-      process_check_ins: updated.processCheckIns,
-      rupture_alerts: updated.ruptureAlerts,
-      status: updated.status,
-      updated_at: updated.updatedAt,
-    });
+    const storageKey = `neuroconecta_psychology_process_${updated.patientUserId}`;
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(updated));
+    } catch {}
 
-    if (error) {
-      console.error("[SmartPlannerService] Erro ao gravar psychology_processes:", error);
-      throw new Error(`Falha ao salvar processo psicológico no Supabase: ${error.message}`);
+    try {
+      const { error } = await supabase.from("psychology_processes").upsert({
+        id: updated.id,
+        professional_user_id: updated.professionalUserId,
+        patient_user_id: updated.patientUserId,
+        patient_name: updated.patientName,
+        start_date: updated.startDate,
+        therapeutic_approach: updated.therapeuticApproach,
+        collaborative_goals: updated.collaborativeGoals,
+        session_agendas: updated.sessionAgendas,
+        inter_session_activities: updated.interSessionActivities,
+        process_check_ins: updated.processCheckIns,
+        rupture_alerts: updated.ruptureAlerts,
+        status: updated.status,
+        updated_at: updated.updatedAt,
+      });
+
+      if (error) {
+        console.warn("[SmartPlannerService] Aviso ao persistir psychology_processes remoto:", error.message);
+      }
+    } catch (e: any) {
+      console.warn("[SmartPlannerService] Falha de conexão ao gravar no Supabase, mantido em cache seguro:", e?.message);
     }
 
-    await auditService.log({
-      actorUserId,
-      action: "PLAN_UPDATED",
-      entityType: "psychology_process",
-      entityId: updated.id,
-      afterData: {
-        patientId: updated.patientUserId,
-        goalsCount: updated.collaborativeGoals.length,
-        ruptureAlertsCount: updated.ruptureAlerts.length,
-      },
-      source: "smartPlannerService.savePsychologyProcess",
-    });
+    try {
+      await auditService.log({
+        actorUserId,
+        action: "PLAN_UPDATED",
+        entityType: "psychology_process",
+        entityId: updated.id,
+        afterData: {
+          patientId: updated.patientUserId,
+          goalsCount: updated.collaborativeGoals.length,
+          ruptureAlertsCount: updated.ruptureAlerts.length,
+        },
+        source: "smartPlannerService.savePsychologyProcess",
+      });
+    } catch {}
 
     return updated;
   },

@@ -10,7 +10,10 @@ import {
   ShieldCheck, 
   ArrowRight,
   MessageSquare,
-  CheckCircle2
+  CheckCircle2,
+  TrendingUp,
+  FileCheck2,
+  Printer
 } from "lucide-react";
 import { 
   PsychologyTherapeuticProcess, 
@@ -21,6 +24,9 @@ import {
   TherapeuticRuptureAlert,
   AssistedUserSummary
 } from "../../types";
+import { PsychologyAllianceDashboard } from "./PsychologyAllianceDashboard";
+import { PsychologyProcessClinicalSummary } from "./PsychologyProcessClinicalSummary";
+import { PsychologyAllianceReportModal } from "./PsychologyAllianceReportModal";
 
 interface PsychologyAllianceViewProps {
   process: PsychologyTherapeuticProcess;
@@ -37,7 +43,11 @@ export const PsychologyAllianceView: React.FC<PsychologyAllianceViewProps> = ({
   onPlanActivityForGoal,
   isDark = true,
 }) => {
-  const [activeTab, setActiveTab] = useState<"objetivos" | "agenda" | "tarefas" | "checkin" | "sinais">("objetivos");
+  const [activeTab, setActiveTab] = useState<
+    "dashboard" | "resumo" | "objetivos" | "agenda" | "tarefas" | "checkin" | "sinais"
+  >("dashboard");
+
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
 
   // Novo objetivo terapêutico
   const [isAddingGoal, setIsAddingGoal] = useState(false);
@@ -179,32 +189,71 @@ export const PsychologyAllianceView: React.FC<PsychologyAllianceViewProps> = ({
         </div>
       </div>
 
-      {/* Navegação entre eixos do processo */}
-      <div className="flex flex-wrap gap-2 border-b border-slate-800 pb-3">
-        {[
-          { id: "objetivos", label: "Objetivos Compartilhados", count: process.collaborativeGoals.length },
-          { id: "agenda", label: "Agenda Colaborativa de Sessão", count: process.sessionAgendas.length },
-          { id: "tarefas", label: "Recursos Entre Sessões", count: process.interSessionActivities.length },
-          { id: "checkin", label: "Check-in de Processo", count: process.processCheckIns.length },
-          { id: "sinais", label: "Sinais de Atenção & Rupturas", count: process.ruptureAlerts.length },
-        ].map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            onClick={() => setActiveTab(tab.id as any)}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 border ${
-              activeTab === tab.id
-                ? "bg-indigo-600 text-white border-indigo-500 shadow-sm"
-                : "bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200"
-            }`}
-          >
-            <span>{tab.label}</span>
-            <span className="px-1.5 py-0.2 rounded-full bg-slate-800 text-[10px] text-slate-300">
-              {tab.count}
-            </span>
-          </button>
-        ))}
+      {/* Navegação entre eixos do processo e Relatório */}
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
+        <div className="flex flex-wrap items-center gap-1.5">
+          {[
+            { id: "dashboard", label: "Evolução da Aliança", icon: TrendingUp, count: process.processCheckIns.length },
+            { id: "resumo", label: "Resumo do Processo", icon: FileCheck2, count: null },
+            { id: "objetivos", label: "Objetivos Compartilhados", icon: Target, count: process.collaborativeGoals.length },
+            { id: "agenda", label: "Agenda de Sessão", icon: CalendarCheck, count: process.sessionAgendas.length },
+            { id: "tarefas", label: "Recursos Entre Sessões", icon: FileText, count: process.interSessionActivities.length },
+            { id: "checkin", label: "Check-in de Processo", icon: HeartHandshake, count: process.processCheckIns.length },
+            { id: "sinais", label: "Sinais & Rupturas", icon: AlertTriangle, count: process.ruptureAlerts.length },
+          ].map((tab) => {
+            const Icon = tab.icon;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id as any)}
+                className={`px-3 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 border ${
+                  activeTab === tab.id
+                    ? "bg-indigo-600 text-white border-indigo-500 shadow-sm"
+                    : "bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                <Icon className="w-3.5 h-3.5" />
+                <span>{tab.label}</span>
+                {tab.count !== null && (
+                  <span className="px-1.5 py-0.2 rounded-full bg-slate-800 text-[10px] text-slate-300">
+                    {tab.count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Botão de Emissão de Relatório do Processo Terapêutico */}
+        <button
+          type="button"
+          onClick={() => setIsReportModalOpen(true)}
+          className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm ml-auto"
+        >
+          <Printer className="w-3.5 h-3.5" />
+          <span>Relatório de Acompanhamento (PDF)</span>
+        </button>
       </div>
+
+      {/* DASHBOARD LONGITUDINAL DA ALIANÇA TERAPÊUTICA */}
+      {activeTab === "dashboard" && (
+        <PsychologyAllianceDashboard
+          process={process}
+          patientDisplayName={selectedUser?.displayName || process.patientName}
+          isDark={isDark}
+          onNavigateToCheckInTab={() => setActiveTab("checkin")}
+        />
+      )}
+
+      {/* RESUMO DO PROCESSO TERAPÊUTICO */}
+      {activeTab === "resumo" && (
+        <PsychologyProcessClinicalSummary
+          process={process}
+          patientDisplayName={selectedUser?.displayName || process.patientName}
+          isDark={isDark}
+        />
+      )}
 
       {/* 1. OBJETIVOS COMPARTILHADOS */}
       {activeTab === "objetivos" && (
@@ -700,6 +749,17 @@ export const PsychologyAllianceView: React.FC<PsychologyAllianceViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* Modal de Emissão do Relatório Psicológico / Evolução da Aliança */}
+      <PsychologyAllianceReportModal
+        isOpen={isReportModalOpen}
+        onClose={() => setIsReportModalOpen(false)}
+        process={process}
+        selectedUser={selectedUser}
+        professionalName="Psicóloga Júlia Santos"
+        professionalRegister="CRP 11/04589"
+        isDark={isDark}
+      />
     </div>
   );
 };

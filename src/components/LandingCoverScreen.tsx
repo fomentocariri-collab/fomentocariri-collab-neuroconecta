@@ -4,11 +4,13 @@ import neuroconectaLogo from "../assets/logo";
 
 interface LandingCoverScreenProps {
   onOpenAuth: () => void;
+  onExploreAsGuest?: () => void;
   isDark?: boolean;
 }
 
 export const LandingCoverScreen: React.FC<LandingCoverScreenProps> = ({
   onOpenAuth,
+  onExploreAsGuest,
   isDark = false,
 }) => {
   return (
@@ -34,13 +36,24 @@ export const LandingCoverScreen: React.FC<LandingCoverScreenProps> = ({
           </div>
         </div>
 
-        <button
-          onClick={onOpenAuth}
-          className="px-5 py-2.5 bg-gradient-to-r from-teal-600 via-emerald-600 to-cyan-600 hover:from-teal-700 hover:to-cyan-700 text-white rounded-2xl font-extrabold text-xs sm:text-sm shadow-lg shadow-teal-700/20 flex items-center gap-2 transition active:scale-95"
-        >
-          <LogIn className="w-4 h-4" />
-          <span>Entrar / Cadastrar</span>
-        </button>
+        <div className="flex items-center gap-2">
+          {onExploreAsGuest && (
+            <button
+              onClick={onExploreAsGuest}
+              className="hidden sm:flex px-4 py-2.5 bg-white hover:bg-slate-100 text-teal-800 border border-teal-200 rounded-2xl font-bold text-xs sm:text-sm items-center gap-2 transition shadow-sm active:scale-95"
+            >
+              <span>Acessar Plataforma</span>
+            </button>
+          )}
+
+          <button
+            onClick={onOpenAuth}
+            className="px-5 py-2.5 bg-gradient-to-r from-teal-600 via-emerald-600 to-cyan-600 hover:from-teal-700 hover:to-cyan-700 text-white rounded-2xl font-extrabold text-xs sm:text-sm shadow-lg shadow-teal-700/20 flex items-center gap-2 transition active:scale-95"
+          >
+            <LogIn className="w-4 h-4" />
+            <span>Entrar / Cadastrar</span>
+          </button>
+        </div>
       </div>
 
       {/* Main Hero Card with Prominent Logo Visual on Pure White Box */}
@@ -78,6 +91,25 @@ export const LandingCoverScreen: React.FC<LandingCoverScreenProps> = ({
           </p>
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-teal-50 border border-teal-200 text-teal-800 text-xs font-semibold">
             <span>✨ Não é necessário laudo formal para utilizar os recursos de rotina, comunicação alternativa e autorregulação.</span>
+          </div>
+
+          {/* Action CTAs for Immediate Access & Preview */}
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-3">
+            {onExploreAsGuest && (
+              <button
+                onClick={onExploreAsGuest}
+                className="w-full sm:w-auto px-6 py-3 bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-700 hover:to-cyan-700 text-white rounded-2xl font-black text-sm shadow-xl shadow-teal-700/20 flex items-center justify-center gap-2 transition active:scale-95"
+              >
+                <span>Acessar Plataforma Agora (Modo Visitante)</span>
+              </button>
+            )}
+            <button
+              onClick={onOpenAuth}
+              className="w-full sm:w-auto px-6 py-3 bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 rounded-2xl font-bold text-sm shadow-sm flex items-center justify-center gap-2 transition active:scale-95"
+            >
+              <LogIn className="w-4 h-4 text-teal-600" />
+              <span>Conectar Minha Conta</span>
+            </button>
           </div>
         </div>
 

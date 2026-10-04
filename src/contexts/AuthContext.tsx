@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
 import { User, Session } from "@supabase/supabase-js";
-import { supabase, getSupabaseProjectRef } from "../lib/supabase";
+import { supabase, getSupabaseProjectRef, getSupabaseConfig } from "../lib/supabase";
 import { UserProfile, UserRole } from "../types";
 import { auditService } from "../services/auditService";
 import { dataSyncService } from "../services/dataSyncService";
@@ -16,7 +16,7 @@ export interface AuthContextType {
   isOfflineMode: boolean;
   signIn: (email: string, pass: string) => Promise<{ error?: string; user?: User; isOfflineFallback?: boolean }>;
   signUp: (email: string, pass: string, initialProfile: Partial<UserProfile>) => Promise<{ error?: string; user?: User; isOfflineFallback?: boolean }>;
-  signInWithGoogle: () => Promise<{ error?: string; details?: string; providerDisabled?: boolean }>;
+  signInWithGoogle: () => Promise<{ error?: string; details?: string; providerDisabled?: boolean; popupBlocked?: boolean; authUrl?: string }>;
   signInLocal: (email: string, name?: string, role?: UserRole) => Promise<{ user: User }>;
   signOut: () => Promise<void>;
   updateProfile: (profile: Partial<UserProfile>) => Promise<{ error?: string }>;
@@ -259,6 +259,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     let mounted = true;
 
     async function initAuth() {
+      // 0. Verifica se há retorno de OAuth na URL corrente (?code= do PKCE ou hash com access_token)
+      try {
+        if (typeof window !== "undefined") {
+          const urlParams = new URLSearchParams(window.location.search);
+          const pkceCode = urlParams.get("code");
+          const authError = urlParams.get("error_description") || urlParams.get("error");
+
+          if (authError) {
+            console.warn("Aviso de erro retornado pelo provedor OAuth:", authError);
+          }
+
+          if (pkceCode) {
+            console.log("Detectado código OAuth na URL, realizando troca PKCE canônica por sessão...");
+            const { data: exchangeData, error: exchangeError } = await supabase.auth.exchangeCodeForSession(pkceCode);
+            if (!exchangeError && exchangeData?.session && mounted) {
+              setIsOfflineMode(false);
+              // Limpa parâmetros da URL de forma limpa sem recarregar a página
+              window.history.replaceState({}, document.title, window.location.pathname);
+              await handleSession(exchangeData.session);
+              return;
+            }
+          }
+        }
+      } catch (oauthErr) {
+        console.warn("Aviso ao processar código OAuth na URL:", oauthErr);
+      }
+
       // 1. Try remote Supabase session with a fast timeout
       try {
         const sessionPromise = supabase.auth.getSession();
@@ -325,6 +352,67 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     initAuth();
 
+    // Listener para mensagens da janela Popup de autenticação OAuth (postMessage)
+    const handleAuthMessage = async (event: MessageEvent) => {
+      if (event.data?.type !== "SUPABASE_AUTH_CALLBACK") return;
+
+      const { search, hash, error: callbackError } = event.data;
+      if (callbackError) {
+        console.warn("Aviso retornado pelo callback OAuth:", callbackError);
+        setIsLoading(false);
+        return;
+      }
+
+      // 1. Tratamento de código PKCE (?code=...)
+      if (search) {
+        const params = new URLSearchParams(search);
+        const code = params.get("code");
+        if (code) {
+          setIsLoading(true);
+          try {
+            const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+            if (!error && data?.session && mounted) {
+              setIsOfflineMode(false);
+              await handleSession(data.session);
+            } else {
+              console.error("Erro na troca de código PKCE via popup:", error);
+              setIsLoading(false);
+            }
+          } catch (err) {
+            console.error("Falha no exchangeCodeForSession:", err);
+            setIsLoading(false);
+          }
+          return;
+        }
+      }
+
+      // 2. Tratamento de hash com tokens (#access_token=...)
+      if (hash && hash.includes("access_token=")) {
+        const hashParams = new URLSearchParams(hash.replace(/^#/, ""));
+        const accessToken = hashParams.get("access_token");
+        const refreshToken = hashParams.get("refresh_token") || "";
+        if (accessToken) {
+          setIsLoading(true);
+          try {
+            const { data, error } = await supabase.auth.setSession({
+              access_token: accessToken,
+              refresh_token: refreshToken,
+            });
+            if (!error && data?.session && mounted) {
+              setIsOfflineMode(false);
+              await handleSession(data.session);
+            } else {
+              setIsLoading(false);
+            }
+          } catch {
+            setIsLoading(false);
+          }
+        }
+      }
+    };
+
+    window.addEventListener("message", handleAuthMessage);
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (mounted && session?.user) {
         setIsOfflineMode(false);
@@ -334,6 +422,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     return () => {
       mounted = false;
+      window.removeEventListener("message", handleAuthMessage);
       subscription.unsubscribe();
     };
   }, [handleSession]);
@@ -560,14 +649,51 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const signInWithGoogle = async (): Promise<{ error?: string; details?: string; providerDisabled?: boolean }> => {
+  const signInWithGoogle = async (): Promise<{ 
+    error?: string; 
+    details?: string; 
+    providerDisabled?: boolean;
+    popupBlocked?: boolean;
+    authUrl?: string;
+  }> => {
     setIsLoading(true);
     try {
-      const redirectOrigin = window.location.origin;
+      const config = getSupabaseConfig();
+      const currentRef = getSupabaseProjectRef();
+
+      // 1. Diagnóstico do status do endpoint e do provedor Google no Supabase
+      try {
+        const checkRes = await fetch(`/api/auth/check-google-provider?url=${encodeURIComponent(config.url)}`);
+        if (checkRes.ok) {
+          const checkData = await checkRes.json();
+          if (checkData.isDnsError) {
+            setIsLoading(false);
+            return {
+              error: `O domínio do projeto Supabase (${currentRef}) não pôde ser resolvido.`,
+              providerDisabled: true,
+              details: `O host "${config.url}" não foi encontrado no DNS. Se você está utilizando um projeto Supabase próprio, configure a URL e chave anônima válidas no botão "Trocar Projeto".`,
+            };
+          }
+          if (checkData.providerDisabled) {
+            setIsLoading(false);
+            return {
+              error: "O provedor Google OAuth não está habilitado no painel do Supabase.",
+              providerDisabled: true,
+              details: `No seu projeto Supabase (${currentRef}), o login com Google precisa ser ativado em Authentication > Providers > Google, com o Client ID e Client Secret gerados no Google Cloud Console.`,
+            };
+          }
+        }
+      } catch (checkErr) {
+        console.warn("Verificação prévia não bloqueante:", checkErr);
+      }
+
+      // 2. Define a rota canônica /auth/callback como destino do redirecionamento
+      const callbackUrl = `${window.location.origin}/auth/callback`;
+
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: redirectOrigin,
+          redirectTo: callbackUrl,
           skipBrowserRedirect: true,
           queryParams: {
             access_type: "offline",
@@ -583,38 +709,42 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           error: error.message,
           providerDisabled: isNotEnabled,
           details: isNotEnabled
-            ? "O provedor Google OAuth não está ativado no painel do Supabase. Ative-o em Authentication > Providers > Google."
+            ? `O provedor Google OAuth não está ativado no painel do Supabase (${currentRef}). Ative-o em Authentication > Providers > Google.`
             : undefined,
         };
       }
 
       if (data?.url) {
-        // Pre-check if Google provider is enabled before redirecting to avoid a raw JSON error tab
-        try {
-          const checkRes = await fetch(data.url, { method: "GET" });
-          if (!checkRes.ok) {
-            const body = await checkRes.json().catch(() => ({}));
-            if (
-              body?.error_code === "validation_failed" ||
-              (body?.msg && body.msg.toLowerCase().includes("provider is not enabled"))
-            ) {
-              const activeRef = getSupabaseProjectRef();
-              setIsLoading(false);
-              return {
-                error: "O provedor Google OAuth não está habilitado no painel do Supabase.",
-                providerDisabled: true,
-                details:
-                  `No seu projeto Supabase (${activeRef}), o login com Google precisa ser ativado em Authentication > Providers > Google. Enquanto isso, você pode entrar ou se cadastrar com seu e-mail do Gmail e senha abaixo.`,
-              };
-            }
-          }
-        } catch (fetchErr) {
-          console.warn("Verificação prévia do Google OAuth:", fetchErr);
+        // 3. Abre em popup controlado para preservar o contexto do app (especialmente em ambientes com iframe)
+        const width = 520;
+        const height = 640;
+        const left = Math.max(0, (window.screen.width - width) / 2);
+        const top = Math.max(0, (window.screen.height - height) / 2);
+
+        const popup = window.open(
+          data.url,
+          "neuroconecta_google_auth",
+          `width=${width},height=${height},top=${top},left=${left},status=no,toolbar=no,menubar=no,resizable=yes`
+        );
+
+        if (!popup || popup.closed) {
+          setIsLoading(false);
+          return {
+            error: "O navegador impediu a abertura da janela de autenticação. Clique no botão abaixo para abrir diretamente.",
+            popupBlocked: true,
+            authUrl: data.url,
+          };
         }
 
-        // If enabled, redirect user to Google
-        window.location.href = data.url;
-        return {};
+        // Timer para resetar estado de loading se o usuário fechar a janela sem autenticar
+        const pollTimer = setInterval(() => {
+          if (popup.closed) {
+            clearInterval(pollTimer);
+            setIsLoading(false);
+          }
+        }, 800);
+
+        return { authUrl: data.url };
       }
 
       setIsLoading(false);

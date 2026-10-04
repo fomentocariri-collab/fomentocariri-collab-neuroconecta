@@ -198,7 +198,7 @@ Instrumento Avaliativo: ${itemToCopy ? itemToCopy.testTitle : test?.title}
 Validação Científica: ${itemToCopy?.validatedClinically || test?.validatedClinically ? `Sim (${itemToCopy?.validationReference || test?.validationReference})` : "Não (Reflexão Pessoal Comunitária)"}
 
 PONTUAÇÃO OBTIDA: ${res.score} / ${res.maxScore} pts
-CLASSIFICAÇÃO DE TRIAGEM: ${itemToCopy ? itemToCopy.interpretationLevel : res.level}
+CLASSIFICAÇÃO DE TRIAGEM: ${itemToCopy ? itemToCopy.interpretationLevel : ((res as any).level || (res as any).interpretationLevel || "Concluído")}
 
 RESENHA TÉCNICA (AVALIAÇÃO EM PROSA CONTINUA):
 ${itemToCopy ? itemToCopy.technicalReview : res.technicalReview}
@@ -757,7 +757,7 @@ Aviso Legal: Documento emitido por ferramenta pedagógica e psicométrica de tri
                 </button>
 
                 <button
-                  onClick={onNavigateToChat}
+                  onClick={() => onNavigateToChat && onNavigateToChat()}
                   className="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-teal-300 font-semibold text-xs sm:text-sm rounded-xl transition flex items-center gap-2 border border-slate-700"
                 >
                   <Sparkles className="w-4 h-4" />

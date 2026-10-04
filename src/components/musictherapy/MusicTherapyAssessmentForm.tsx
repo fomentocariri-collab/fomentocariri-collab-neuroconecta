@@ -37,6 +37,7 @@ import { auditService } from "../../services/auditService";
 interface MusicTherapyAssessmentFormProps {
   currentCase: MusicotherapyCase;
   isDark?: boolean;
+  onSaved?: () => void;
 }
 
 export const MusicTherapyAssessmentForm: React.FC<MusicTherapyAssessmentFormProps> = ({
@@ -145,48 +146,70 @@ export const MusicTherapyAssessmentForm: React.FC<MusicTherapyAssessmentFormProp
   }, [currentCase.id]);
 
   const loadAssessments = async () => {
+    const storageKey = `neuroconecta_mt_assessments_${currentCase.id}`;
+    let loaded: MusicotherapyAssessment[] = [];
+
     try {
-      const list = await musicotherapyService.getAssessments(currentCase.id);
-      if (list.length > 0) {
-        setAssessments(list);
-        setSelectedAssessment(list[0]);
-        fillFormWithAssessment(list[0]);
-      } else {
-        // Inicializa estrutura padrão para o caso atual
-        const defaultAssessment: MusicotherapyAssessment = {
-          id: `eval-${currentCase.id}-01`,
-          case_id: currentCase.id,
-          patient_id: currentCase.patient_id,
-          patient_name: currentCase.patient_name,
-          professional_id: currentCase.professional_id,
-          professional_name: currentCase.professional_name,
-          professional_register: currentCase.professional_register,
-          assessment_type: "initial",
-          date: currentCase.start_date || new Date().toISOString().split("T")[0],
-          status: "signed",
-          version: 1,
-          musical_profile: musicalProfile,
-          sensory_response: sensoryResponse,
-          communication: communication,
-          social_interaction: socialInteraction,
-          attention_engagement: attentionEngagement,
-          regulation: regulation,
-          motor_aspects: motorAspects,
-          emotional_aspects: emotionalAspects,
-          context: context,
-          objective_observations: objectiveObservations,
-          clinical_interpretation: clinicalInterpretation,
-          signed_at: new Date().toISOString(),
-          signed_by: currentCase.professional_name,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        };
-        setAssessments([defaultAssessment]);
-        setSelectedAssessment(defaultAssessment);
+      const stored = localStorage.getItem(storageKey);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          loaded = parsed;
+        }
       }
-    } catch {
-      // Usa fallback
+    } catch {}
+
+    try {
+      const remote = await musicotherapyService.getAssessments(currentCase.id);
+      if (remote && remote.length > 0) {
+        loaded = remote;
+      }
+    } catch {}
+
+    if (loaded.length > 0) {
+      setAssessments(loaded);
+      setSelectedAssessment(loaded[0]);
+      fillFormWithAssessment(loaded[0]);
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(loaded));
+      } catch {}
+      return;
     }
+
+    // Inicializa estrutura padrão para o caso atual se nada existir
+    const defaultAssessment: MusicotherapyAssessment = {
+      id: `eval-${currentCase.id}-01`,
+      case_id: currentCase.id,
+      patient_id: currentCase.patient_id,
+      patient_name: currentCase.patient_name,
+      professional_id: currentCase.professional_id,
+      professional_name: currentCase.professional_name,
+      professional_register: currentCase.professional_register,
+      assessment_type: "initial",
+      date: currentCase.start_date || new Date().toISOString().split("T")[0],
+      status: "signed",
+      version: 1,
+      musical_profile: musicalProfile,
+      sensory_response: sensoryResponse,
+      communication: communication,
+      social_interaction: socialInteraction,
+      attention_engagement: attentionEngagement,
+      regulation: regulation,
+      motor_aspects: motorAspects,
+      emotional_aspects: emotionalAspects,
+      context: context,
+      objective_observations: objectiveObservations,
+      clinical_interpretation: clinicalInterpretation,
+      signed_at: new Date().toISOString(),
+      signed_by: currentCase.professional_name,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    setAssessments([defaultAssessment]);
+    setSelectedAssessment(defaultAssessment);
+    try {
+      localStorage.setItem(storageKey, JSON.stringify([defaultAssessment]));
+    } catch {}
   };
 
   const fillFormWithAssessment = (ass: MusicotherapyAssessment) => {
@@ -261,6 +284,11 @@ export const MusicTherapyAssessmentForm: React.FC<MusicTherapyAssessmentFormProp
     setAssessments(nextList);
     setSelectedAssessment(payload);
     setIsNewMode(false);
+
+    try {
+      localStorage.setItem(`neuroconecta_mt_assessments_${currentCase.id}`, JSON.stringify(nextList));
+    } catch {}
+
     setFeedback(signNow ? "Avaliação finalizada e assinada eletronicamente." : "Rascunho de avaliação salvo.");
     setTimeout(() => setFeedback(null), 3500);
   };

@@ -148,6 +148,7 @@ export default function App() {
       <>
         <LandingCoverScreen
           onOpenAuth={() => setIsAuthOpen(true)}
+          onExploreAsGuest={() => setIsExploringAsGuest(true)}
           isDark={userProfile.lowStimulationMode}
         />
         <AuthModal

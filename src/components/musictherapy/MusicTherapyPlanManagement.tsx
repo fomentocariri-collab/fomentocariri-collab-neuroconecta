@@ -69,6 +69,36 @@ export const MusicTherapyPlanManagement: React.FC<MusicTherapyPlanManagementProp
   }, [currentCase.id]);
 
   const loadGoals = async () => {
+    const storageKey = `neuroconecta_mt_goals_${currentCase.id}`;
+    let loaded: MusicotherapyGoal[] = [];
+
+    try {
+      const stored = localStorage.getItem(storageKey);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          loaded = parsed;
+        }
+      }
+    } catch {}
+
+    if (loaded.length === 0) {
+      try {
+        const remote = await musicotherapyService.getGoals(`plan-${currentCase.id}`);
+        if (remote && remote.length > 0) {
+          loaded = remote;
+        }
+      } catch {}
+    }
+
+    if (loaded.length > 0) {
+      setGoals(loaded);
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(loaded));
+      } catch {}
+      return;
+    }
+
     // Seed inicial de metas se ainda não existirem
     const defaultGoals: MusicotherapyGoal[] = [
       {
@@ -126,9 +156,12 @@ export const MusicTherapyPlanManagement: React.FC<MusicTherapyPlanManagementProp
     ];
 
     setGoals(defaultGoals);
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(defaultGoals));
+    } catch {}
   };
 
-  const handleAddGoal = (e: React.FormEvent) => {
+  const handleAddGoal = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!goalDescription.trim() || !goalBaseline.trim() || !goalTarget.trim()) return;
 
@@ -148,6 +181,12 @@ export const MusicTherapyPlanManagement: React.FC<MusicTherapyPlanManagementProp
 
     const next = [...goals, newGoal];
     setGoals(next);
+
+    try {
+      localStorage.setItem(`neuroconecta_mt_goals_${currentCase.id}`, JSON.stringify(next));
+      await musicotherapyService.saveGoal(newGoal, currentCase.professional_id);
+    } catch {}
+
     setShowNewGoalModal(false);
     setGoalDescription("");
     setGoalBaseline("");
@@ -156,12 +195,21 @@ export const MusicTherapyPlanManagement: React.FC<MusicTherapyPlanManagementProp
     setTimeout(() => setFeedback(null), 3000);
   };
 
-  const handleToggleGoalStatus = (goalId: string, currentStatus: MusicotherapyGoal["status"]) => {
+  const handleToggleGoalStatus = async (goalId: string, currentStatus: MusicotherapyGoal["status"]) => {
     const nextStatus: MusicotherapyGoal["status"] = 
       currentStatus === "active" ? "partially_achieved" :
       currentStatus === "partially_achieved" ? "achieved" : "active";
 
-    setGoals(goals.map(g => g.id === goalId ? { ...g, status: nextStatus } : g));
+    const next = goals.map(g => g.id === goalId ? { ...g, status: nextStatus } : g);
+    setGoals(next);
+
+    try {
+      localStorage.setItem(`neuroconecta_mt_goals_${currentCase.id}`, JSON.stringify(next));
+      const targetGoal = next.find(g => g.id === goalId);
+      if (targetGoal) {
+        await musicotherapyService.saveGoal(targetGoal, currentCase.professional_id);
+      }
+    } catch {}
   };
 
   return (

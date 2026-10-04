@@ -29,63 +29,107 @@ export function getSupabaseConfig(): SupabaseConfig {
     if (custom) {
       const parsed = JSON.parse(custom);
       if (parsed.url && parsed.anonKey) {
+        let cleanUrl = String(parsed.url).trim();
+        // If user typed project id like 'gbjanxdyllxpsydsubcx' or 'xyz.supabase.co':
+        if (!cleanUrl.startsWith("http://") && !cleanUrl.startsWith("https://")) {
+          cleanUrl = `https://${cleanUrl}.supabase.co`;
+        }
+        // Test that URL is strictly valid
+        new URL(cleanUrl);
+
         return {
-          url: parsed.url.trim(),
-          anonKey: parsed.anonKey.trim(),
+          url: cleanUrl,
+          anonKey: String(parsed.anonKey).trim(),
           isCustom: true,
         };
       }
     }
   } catch (e) {
-    console.warn("Erro ao ler config customizada do Supabase:", e);
+    console.warn("Config customizada do Supabase inválida no navegador, restaurando padrão seguro:", e);
+    try {
+      localStorage.removeItem("neuroconecta_supabase_custom_config");
+    } catch {}
   }
 
   const envUrl = (import.meta.env.VITE_SUPABASE_URL as string | undefined)?.trim();
   const envKey = (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined)?.trim();
 
+  let defaultUrl = envUrl || "https://gbjanxdyllxpsydsubcx.supabase.co";
+  if (!defaultUrl.startsWith("http://") && !defaultUrl.startsWith("https://")) {
+    defaultUrl = `https://${defaultUrl}.supabase.co`;
+  }
+
   return {
-    url: envUrl || "https://gbjanxdyllxpsydsubcx.supabase.co",
+    url: defaultUrl,
     anonKey: envKey || "sb_publishable_3YXxIUQtChenhRgqMlr0Xw_W8DgQ2da",
     isCustom: false,
   };
 }
 
 export function saveSupabaseConfig(url: string, anonKey: string): void {
-  localStorage.setItem(
-    "neuroconecta_supabase_custom_config",
-    JSON.stringify({
-      url: url.trim(),
-      anonKey: anonKey.trim(),
-      updatedAt: new Date().toISOString(),
-    })
-  );
+  let cleanUrl = (url || "").trim();
+  if (!cleanUrl.startsWith("http://") && !cleanUrl.startsWith("https://")) {
+    cleanUrl = `https://${cleanUrl}.supabase.co`;
+  }
+  try {
+    new URL(cleanUrl);
+  } catch (err) {
+    console.error("URL fornecida para Supabase é inválida:", url, err);
+    return;
+  }
+
+  try {
+    localStorage.setItem(
+      "neuroconecta_supabase_custom_config",
+      JSON.stringify({
+        url: cleanUrl,
+        anonKey: anonKey.trim(),
+        updatedAt: new Date().toISOString(),
+      })
+    );
+  } catch (storageErr) {
+    console.warn("Falha ao salvar config do Supabase no localStorage:", storageErr);
+  }
+
   rebuildSupabaseClient();
 }
 
 export function resetSupabaseConfig(): void {
-  localStorage.removeItem("neuroconecta_supabase_custom_config");
+  try {
+    localStorage.removeItem("neuroconecta_supabase_custom_config");
+  } catch {}
   rebuildSupabaseClient();
+}
+
+function safeCreateSupabaseClient(config: SupabaseConfig): SupabaseClient {
+  try {
+    const validUrl = new URL(config.url).toString();
+    return createClient(validUrl, config.anonKey, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+      },
+    });
+  } catch (err) {
+    console.error("Falha ao inicializar cliente Supabase com config personalizada, acionando fallback seguro:", err);
+    return createClient("https://gbjanxdyllxpsydsubcx.supabase.co", "sb_publishable_3YXxIUQtChenhRgqMlr0Xw_W8DgQ2da", {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+        detectSessionInUrl: false,
+      },
+    });
+  }
 }
 
 let activeConfig = getSupabaseConfig();
 
-export let supabase: SupabaseClient = createClient(activeConfig.url, activeConfig.anonKey, {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-    detectSessionInUrl: true,
-  },
-});
+export let supabase: SupabaseClient = safeCreateSupabaseClient(activeConfig);
 
 export function rebuildSupabaseClient(): void {
   activeConfig = getSupabaseConfig();
-  supabase = createClient(activeConfig.url, activeConfig.anonKey, {
-    auth: {
-      persistSession: true,
-      autoRefreshToken: true,
-      detectSessionInUrl: true,
-    },
-  });
+  supabase = safeCreateSupabaseClient(activeConfig);
 }
 
 export interface SupabaseHealthReport {

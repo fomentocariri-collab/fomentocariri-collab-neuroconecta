@@ -24,6 +24,7 @@ export type UserRole =
   | "cuidador_educador" 
   | "educador_aee" 
   | "profissional_apoio" 
+  | "profissional_saude"
   | "saude_caps" 
   | "rh_gestor" 
   | "superadmin";
@@ -39,6 +40,7 @@ export interface UserProfile {
   userRole?: UserRole;
   professionalRoleType?: ProfessionalRoleType;
   professionalRegisterNumber?: string; // e.g. CRM/SP 123456, COREN/RJ 654321, CRA/BR 98765, MEC/PE 45678, CIPTEA 001/2026
+  cipteaNumber?: string;
   diagnosisStatus: DiagnosisStatus;
   supportLevel?: SupportLevel;
   currentFocus: FocusArea;
@@ -242,6 +244,8 @@ export interface FunctionalSupportPlan {
   breakRequestProtocol: string;
   schoolAccommodationsAgreed: string[];
   authorizedSupportContacts: { name: string; phone: string; role: string }[];
+  goals?: string[];
+  sensoryAccommodations?: string[];
 }
 
 export interface PeiDraftVersion {
@@ -253,12 +257,16 @@ export interface PeiDraftVersion {
   creatorRole: string;
   studentName: string;
   schoolName: string;
+  school?: string;
   grade: string;
   specialistName: string;
   functionalNeeds: string;
   sensoryAccommodations: string[];
+  sensoryNeeds?: string[];
+  accommodations?: string[];
   curricularAccommodations: string[];
   pedagogicalGoals: string;
+  goals?: string[];
   status: "minuta_rascunho" | "em_revisao_equipe" | "aprovado_com_familia";
   reviewNotes?: string;
 }
